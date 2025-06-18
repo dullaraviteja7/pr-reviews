@@ -1,0 +1,6 @@
+PR Number,Review Comment,Category,Severity,Developer Guideline
+101,"Button text is too long, consider shortening.",Readability/Clarity,Low,"Review UI text length guidelines. Ensure text is concise and fits allocated space."
+102,"Looks good, but can we add a unit test for this new service?",Missing Test Coverage,Medium,"Ensure new services have adequate unit tests covering primary functionality and edge cases."
+102,"Consider using a more descriptive variable name here.",Naming Convention,Low,"Use clear and descriptive variable names that reflect their purpose, following project naming standards."
+103,"This logic seems a bit complex, can it be simplified?",Readability/Clarity,Medium,"Refactor complex logic into smaller, more manageable functions. Aim for simplicity and clarity."
+103,"LGTM!",Other,Low,"Standard positive affirmation."
