@@ -17,15 +17,19 @@ import requests
 load_dotenv()
 
 def get_github_data(api_url, headers, accept_header=None):
-    """Helper function to make GitHub API calls."""
     if accept_header:
         headers['Accept'] = accept_header
     response = requests.get(api_url, headers=headers)
-    if response.status_code == 200:
+    if response.status_code != 200:
+        raise Exception(f"GitHub API error {response.status_code}: {response.text}")
+    # If requesting raw content, return text
+    if headers.get('Accept', '').startswith('application/vnd.github.v3.raw'):
+        return response.text
+    # Otherwise, try to parse as JSON
+    try:
         return response.json()
-    else:
-        print(f"Error fetching {api_url}: {response.status_code} - {response.text}")
-        return None
+    except Exception:
+        raise Exception(f"Failed to parse JSON from GitHub API: {response.text}")
 
 def fetch_code_owners(owner, repo, headers):
     """Fetches and parses the .github/CODEOWNERS file."""
@@ -33,69 +37,43 @@ def fetch_code_owners(owner, repo, headers):
     data = get_github_data(api_url, headers, accept_header="application/vnd.github.v3.raw") # Request raw content
 
     code_owner_usernames = set()
-    if data and data.get('content'):
+    # If data is a string, it's the raw file content
+    if isinstance(data, str):
+        decoded_content = data
+        for line in decoded_content.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            for part in parts:
+                if part.startswith('@'):
+                    username = part[1:]
+                    if '/' in username:
+                        username = username.split('/')[-1]
+                    code_owner_usernames.add(username)
+        print(f"Successfully parsed CODEOWNERS (direct text). Found: {code_owner_usernames}")
+    # If data is a dict and has 'content', handle as before (base64-encoded)
+    elif data and isinstance(data, dict) and data.get('content'):
         try:
             decoded_content = base64.b64decode(data['content']).decode('utf-8')
             for line in decoded_content.splitlines():
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
-                # Basic parsing: look for @username patterns
                 parts = line.split()
                 for part in parts:
                     if part.startswith('@'):
                         username = part[1:]
-                        # Handle potential /team-name in @org/team-name
                         if '/' in username:
                             username = username.split('/')[-1]
                         code_owner_usernames.add(username)
             print(f"Successfully fetched and parsed CODEOWNERS. Found: {code_owner_usernames}")
         except Exception as e:
             print(f"Error decoding or parsing CODEOWNERS content: {e}")
-            # Try to get content directly if raw failed or if it's not base64 encoded (should not happen for /contents api)
-            # For this, we'd need to re-fetch without the specific accept header or handle non-JSON response if 'data' is string
-            if isinstance(data, str): # If raw endpoint returned plain text
-                decoded_content = data
-                for line in decoded_content.splitlines():
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    parts = line.split()
-                    for part in parts:
-                        if part.startswith('@'):
-                            username = part[1:]
-                            if '/' in username:
-                                username = username.split('/')[-1]
-                            code_owner_usernames.add(username)
-                print(f"Successfully parsed CODEOWNERS (direct text). Found: {code_owner_usernames}")
-
-    elif data is None: # get_github_data returned None due to HTTP error
+    elif data is None:
         print(f"Warning: Could not fetch .github/CODEOWNERS file. It might not exist or access is denied.")
-    else: # No 'content' field, or other unexpected response
+    else:
         print(f"Warning: .github/CODEOWNERS content not found in response or response was unexpected: {data}")
-        # Attempt to fetch with raw content type if previous attempt was not specific enough
-        # This part is a bit redundant if the initial call to get_github_data already used the raw accept header
-        # and would only be useful if the content was directly in the response body as a string.
-        api_url_raw = f"https://raw.githubusercontent.com/{owner}/{repo}/master/.github/CODEOWNERS" # Or main branch
-        # This requires a different handling as it gives raw text, not JSON
-        response_raw = requests.get(api_url_raw, headers=headers)
-        if response_raw.status_code == 200:
-            decoded_content = response_raw.text
-            for line in decoded_content.splitlines():
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                parts = line.split()
-                for part in parts:
-                    if part.startswith('@'):
-                        username = part[1:]
-                        if '/' in username:
-                            username = username.split('/')[-1]
-                        code_owner_usernames.add(username)
-            print(f"Successfully fetched and parsed CODEOWNERS from raw URL. Found: {code_owner_usernames}")
-        else:
-            print(f"Warning: Could not fetch .github/CODEOWNERS from raw URL either. Status: {response_raw.status_code}")
-
 
     return code_owner_usernames
 

@@ -156,4 +156,4 @@ app.layout = html.Div(children=[
 if __name__ == '__main__':
     # Be mindful of port conflicts if other services are running on 8050.
     # You can change the port: app.run_server(debug=True, port=8051)
-    app.run_server(debug=True)
+    app.run(debug=True)
