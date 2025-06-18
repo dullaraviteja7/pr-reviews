@@ -1,0 +1,10 @@
+python-dotenv
+requests
+PyGithub
+
+# For AI analysis (transformers library by Hugging Face)
+transformers
+torch
+# sentencepiece # Often needed by transformers models
+pandas
+dash
