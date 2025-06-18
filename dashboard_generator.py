@@ -13,34 +13,48 @@ import pandas as pd
 
 # File Paths & Data Loading
 DATA_DIR = "data/"
-PR_LIST_FILE = os.path.join(DATA_DIR, "sample-pr-list.csv")
-REVIEWER_LIST_FILE = os.path.join(DATA_DIR, "sample-reviewer-list.csv")
-AUTHOR_LIST_FILE = os.path.join(DATA_DIR, "sample-author-list.csv")
-REVIEWS_LIST_FILE = os.path.join(DATA_DIR, "sample-reviews-list.csv")
-REVIEWS_ANALYSIS_FILE = os.path.join(DATA_DIR, "sample-reviews-analysis.csv")
+EXCEL_DATA_FILE = os.path.join(DATA_DIR, "intermediate_data.xlsx")
 
-def load_data(file_path):
-    """Loads a CSV file into a pandas DataFrame."""
+# Sheet names for clarity
+SHEET_PR_LIST = "PRList"
+SHEET_REVIEWER_LIST = "ReviewerList"
+SHEET_AUTHOR_LIST = "AuthorList"
+SHEET_REVIEWS = "ReviewList"
+SHEET_REVIEWS_ANALYSIS = "ReviewAnalysis"
+
+def load_data(file_path, sheet_name=None):
+    """Loads data from a specified sheet in an Excel file or a CSV file."""
     try:
-        df = pd.read_csv(file_path)
-        print(f"Successfully loaded data from {file_path}")
+        if sheet_name:
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            print(f"Successfully loaded data from sheet '{sheet_name}' in {file_path}")
+        else: # Fallback for CSV, though not used in this script's current primary flow
+            df = pd.read_csv(file_path)
+            print(f"Successfully loaded data from CSV: {file_path}")
         return df
     except FileNotFoundError:
         print(f"Error: File not found at {file_path}")
         return None
-    except pd.errors.EmptyDataError:
-        print(f"Error: File at {file_path} is empty.")
+    except ValueError as e: # Specific to pd.read_excel if sheet_name is not found
+        print(f"Error: Sheet '{sheet_name}' not found in {file_path}. Details: {e}")
+        return None
+    except pd.errors.EmptyDataError: # Can apply to CSV
+        print(f"Error: Data at {file_path} (sheet: {sheet_name}) is empty.")
         return None
     except Exception as e:
-        print(f"Error loading data from {file_path}: {e}")
+        if sheet_name:
+            print(f"Error loading data from sheet '{sheet_name}' in {file_path}: {e}")
+        else:
+            print(f"Error loading data from CSV {file_path}: {e}")
         return None
 
-# Load all dataframes
-df_pr_list = load_data(PR_LIST_FILE)
-df_reviewer_list = load_data(REVIEWER_LIST_FILE)
-df_author_list = load_data(AUTHOR_LIST_FILE)
-df_reviews = load_data(REVIEWS_LIST_FILE)
-df_reviews_analysis = load_data(REVIEWS_ANALYSIS_FILE)
+# Load all dataframes from the Excel file
+print(f"Loading data from Excel file: {EXCEL_DATA_FILE}")
+df_pr_list = load_data(EXCEL_DATA_FILE, sheet_name=SHEET_PR_LIST)
+df_reviewer_list = load_data(EXCEL_DATA_FILE, sheet_name=SHEET_REVIEWER_LIST)
+df_author_list = load_data(EXCEL_DATA_FILE, sheet_name=SHEET_AUTHOR_LIST)
+df_reviews = load_data(EXCEL_DATA_FILE, sheet_name=SHEET_REVIEWS)
+df_reviews_analysis = load_data(EXCEL_DATA_FILE, sheet_name=SHEET_REVIEWS_ANALYSIS)
 
 # Critical data check
 if df_reviews_analysis is None:

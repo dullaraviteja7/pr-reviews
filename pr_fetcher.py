@@ -5,6 +5,7 @@ The fetched data is saved into CSV files in the 'data/' directory.
 """
 import os
 import csv
+import pandas as pd
 import argparse
 from datetime import datetime
 import time # For adding delays
@@ -236,70 +237,55 @@ def main():
         # Optional: Be polite to the API
         time.sleep(0.5) # 0.5 second delay
 
-    # Write pr-list.csv
-    pr_list_path = os.path.join(data_dir, "pr-list.csv")
-    if prs:
-        with open(pr_list_path, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['PR Number', 'PR Heading', 'PR Date', 'Author', 'Status']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(prs)
-        print(f"Successfully wrote {len(prs)} PRs to {pr_list_path}")
-    else:
-        print(f"No PRs fetched for {repo_owner}/{repo_name}. {pr_list_path} will be empty or only have headers.")
-        # Create empty file with headers if no PRs
-        with open(pr_list_path, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['PR Number', 'PR Heading', 'PR Date', 'Author', 'Status']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
+    # Define Excel file path
+    excel_file_path = os.path.join(data_dir, "intermediate_data.xlsx")
 
-
-    # Write author-list.csv
-    author_list_path = os.path.join(data_dir, "author-list.csv")
-    with open(author_list_path, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['Author', 'Author Name']) # Write headers
-        if authors:
-            writer.writerows(sorted(list(authors)))
-            print(f"Successfully wrote {len(authors)} authors to {author_list_path}")
+    with pd.ExcelWriter(excel_file_path, engine='openpyxl') as writer:
+        # Write PRs to "PRList" sheet
+        if prs:
+            pr_df = pd.DataFrame(prs)
+            pr_df.to_excel(writer, sheet_name='PRList', index=False)
+            print(f"Successfully wrote {len(prs)} PRs to 'PRList' sheet in {excel_file_path}")
         else:
-            print(f"No authors found. {author_list_path} will only have headers.")
+            pd.DataFrame(columns=['PR Number', 'PR Heading', 'PR Date', 'Author', 'Status']).to_excel(writer, sheet_name='PRList', index=False)
+            print(f"No PRs fetched. 'PRList' sheet created with headers in {excel_file_path}")
 
+        # Write Authors to "AuthorList" sheet
+        if authors:
+            # Convert set of tuples to list of dicts for DataFrame creation
+            authors_list_of_dicts = [{'Author': login, 'Author Name': name} for login, name in sorted(list(authors))]
+            authors_df = pd.DataFrame(authors_list_of_dicts)
+            authors_df.to_excel(writer, sheet_name='AuthorList', index=False)
+            print(f"Successfully wrote {len(authors_df)} authors to 'AuthorList' sheet.")
+        else:
+            pd.DataFrame(columns=['Author', 'Author Name']).to_excel(writer, sheet_name='AuthorList', index=False)
+            print(f"No authors found. 'AuthorList' sheet created with headers.")
 
-    # Write reviewer-list.csv (now using all_reviewers_set)
-    reviewer_list_path = os.path.join(data_dir, "reviewer-list.csv")
-    with open(reviewer_list_path, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['Reviewer', 'Reviewer Name', 'IsCodeOwner']) # Write headers
+        # Write Reviewers to "ReviewerList" sheet
         if all_reviewers_set:
-            processed_reviewers_count = 0
+            reviewers_list_of_dicts = []
             for login, name in sorted(list(all_reviewers_set)):
                 is_code_owner = "Yes" if login in code_owners else "No"
-                writer.writerow([login, name, is_code_owner])
-                processed_reviewers_count += 1
-            print(f"Successfully wrote {processed_reviewers_count} unique reviewers to {reviewer_list_path}")
+                reviewers_list_of_dicts.append({'Reviewer': login, 'Reviewer Name': name, 'IsCodeOwner': is_code_owner})
+            reviewers_df = pd.DataFrame(reviewers_list_of_dicts)
+            reviewers_df.to_excel(writer, sheet_name='ReviewerList', index=False)
+            print(f"Successfully wrote {len(reviewers_df)} unique reviewers to 'ReviewerList' sheet.")
         else:
-            print(f"No reviewers found. {reviewer_list_path} will only have headers.")
+            pd.DataFrame(columns=['Reviewer', 'Reviewer Name', 'IsCodeOwner']).to_excel(writer, sheet_name='ReviewerList', index=False)
+            print(f"No reviewers found. 'ReviewerList' sheet created with headers.")
 
+        # Write Review Comments to "ReviewList" sheet
+        if all_review_comments:
+            reviews_df = pd.DataFrame(all_review_comments)
+            # Ensure correct column order, matching old CSV if necessary, though for Excel it's less critical unless specified
+            # Defaulting to DataFrame's column order or specify columns=['Review Comment', 'Reviewer', 'Reviewer Date', 'PR Number']
+            reviews_df.to_excel(writer, sheet_name='ReviewList', index=False)
+            print(f"Successfully wrote {len(all_review_comments)} review comments to 'ReviewList' sheet.")
+        else:
+            pd.DataFrame(columns=['Review Comment', 'Reviewer', 'Reviewer Date', 'PR Number']).to_excel(writer, sheet_name='ReviewList', index=False)
+            print(f"No review comments fetched. 'ReviewList' sheet created with headers.")
 
-    # Write reviews-list.csv
-    reviews_list_path = os.path.join(data_dir, "reviews-list.csv")
-    if all_review_comments:
-        with open(reviews_list_path, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['Review Comment', 'Reviewer', 'Reviewer Date', 'PR Number']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(all_review_comments)
-        print(f"Successfully wrote {len(all_review_comments)} review comments to {reviews_list_path}")
-    else:
-        print(f"No review comments fetched. {reviews_list_path} will be empty or only have headers.")
-        # Create empty file with headers if no review comments
-        with open(reviews_list_path, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['Review Comment', 'Reviewer', 'Reviewer Date', 'PR Number']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-
-    print(f"\nData fetching complete. CSV files are in '{os.path.abspath(data_dir)}'")
+    print(f"\nData fetching complete. Excel file is at '{os.path.abspath(excel_file_path)}'")
 
 
 if __name__ == "__main__":

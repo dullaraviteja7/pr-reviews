@@ -1,60 +1,65 @@
 import pandas as pd
 import os
 
-# Constants for data directory and file names
-DATA_DIR = "data/"
-PR_LIST_FILE = "sample-pr-list.csv"
-REVIEWER_LIST_FILE = "sample-reviewer-list.csv"
-AUTHOR_LIST_FILE = "sample-author-list.csv"
-REVIEWS_LIST_FILE = "sample-reviews-list.csv"
-REVIEWS_ANALYSIS_FILE = "sample-reviews-analysis.csv"
+# Constants for data directory and Excel file name
+DATA_DIR = "data/" # Retained as intermediate_data.xlsx is expected here
+INTERMEDIATE_EXCEL_FILE = "intermediate_data.xlsx"
+EXCEL_FILE_PATH = os.path.join(DATA_DIR, INTERMEDIATE_EXCEL_FILE)
 
-def load_data(file_path):
+# Sheet names mapping
+SHEET_NAMES = {
+    "pr_list": "PRList",
+    "reviewer_list": "ReviewerList",
+    "author_list": "AuthorList",
+    "reviews_list": "ReviewList",
+    "reviews_analysis": "ReviewAnalysis"
+}
+
+def load_sheet_from_excel(excel_path, sheet_name):
     """
-    Loads data from a CSV file into a pandas DataFrame.
+    Loads a specific sheet from an Excel file into a pandas DataFrame.
 
     Args:
-        file_path (str): The path to the CSV file.
+        excel_path (str): The path to the Excel file.
+        sheet_name (str): The name of the sheet to load.
 
     Returns:
         pd.DataFrame: The loaded DataFrame, or None if an error occurs.
     """
     try:
-        df = pd.read_csv(file_path)
+        df = pd.read_excel(excel_path, sheet_name=sheet_name)
+        print(f"Successfully loaded sheet '{sheet_name}' from {excel_path}")
         return df
     except FileNotFoundError:
-        print(f"Error: File not found at {file_path}")
+        print(f"Error: Excel file not found at {excel_path}")
         return None
-    except pd.errors.EmptyDataError:
-        print(f"Error: File is empty at {file_path}")
+    except ValueError as e: # pd.read_excel can raise ValueError if sheet_name doesn't exist
+        print(f"Error: Sheet '{sheet_name}' not found in {excel_path}. Details: {e}")
         return None
     except Exception as e:
-        print(f"An unexpected error occurred while loading {file_path}: {e}")
+        print(f"An unexpected error occurred while loading sheet '{sheet_name}' from {excel_path}: {e}")
         return None
 
 if __name__ == "__main__":
-    pr_list_df = load_data(os.path.join(DATA_DIR, PR_LIST_FILE))
-    if pr_list_df is not None:
-        print(f"Successfully loaded {PR_LIST_FILE}")
+    pr_list_df = load_sheet_from_excel(EXCEL_FILE_PATH, SHEET_NAMES["pr_list"])
+    reviewer_list_df = load_sheet_from_excel(EXCEL_FILE_PATH, SHEET_NAMES["reviewer_list"])
+    author_list_df = load_sheet_from_excel(EXCEL_FILE_PATH, SHEET_NAMES["author_list"])
+    reviews_list_df = load_sheet_from_excel(EXCEL_FILE_PATH, SHEET_NAMES["reviews_list"])
+    reviews_analysis_df = load_sheet_from_excel(EXCEL_FILE_PATH, SHEET_NAMES["reviews_analysis"])
 
-    reviewer_list_df = load_data(os.path.join(DATA_DIR, REVIEWER_LIST_FILE))
-    if reviewer_list_df is not None:
-        print(f"Successfully loaded {REVIEWER_LIST_FILE}")
+    # Initialize DataFrames for summaries to handle cases where loading fails
+    df_author_summary = pd.DataFrame()
+    df_category_distribution = pd.DataFrame({'Status': ["Data not loaded or processed"]})
+    df_severity_distribution = pd.DataFrame({'Status': ["Data not loaded or processed"]})
+    df_total_reviews_per_reviewer = pd.DataFrame({'Status': ["Data not loaded or processed"]})
+    df_reviews_by_pr_and_reviewer = pd.DataFrame({'Status': ["Data not loaded or processed"]})
+    df_code_owner_category_summary = pd.DataFrame({'Status': ["Data not loaded or processed"]})
+    df_code_owner_severity_summary = pd.DataFrame({'Status': ["Data not loaded or processed"]})
 
-    author_list_df = load_data(os.path.join(DATA_DIR, AUTHOR_LIST_FILE))
-    if author_list_df is not None:
-        print(f"Successfully loaded {AUTHOR_LIST_FILE}")
-
-    reviews_list_df = load_data(os.path.join(DATA_DIR, REVIEWS_LIST_FILE))
-    if reviews_list_df is not None:
-        print(f"Successfully loaded {REVIEWS_LIST_FILE}")
-
-    reviews_analysis_df = load_data(os.path.join(DATA_DIR, REVIEWS_ANALYSIS_FILE))
-    if reviews_analysis_df is not None:
-        print(f"Successfully loaded {REVIEWS_ANALYSIS_FILE}")
 
     # --- Author Summary Calculation ---
-    if pr_list_df is not None and reviews_list_df is not None:
+    # Check if all required DataFrames for this section were loaded successfully
+    if pr_list_df is not None and reviews_list_df is not None and author_list_df is not None:
         # Calculate total PRs per author
         author_total_prs = pr_list_df.groupby('Author')['PR Number'].count().rename('Total PRs')
 
@@ -115,9 +120,7 @@ if __name__ == "__main__":
         print("Could not generate Author Summary because PR list or Reviews list data is missing.")
 
     # --- Review Comments Summary ---
-    df_category_distribution = pd.DataFrame()
-    df_severity_distribution = pd.DataFrame()
-
+    # df_category_distribution and df_severity_distribution initialized earlier
     if reviews_analysis_df is not None and not reviews_analysis_df.empty:
         if 'Category' in reviews_analysis_df.columns:
             df_category_distribution = reviews_analysis_df.groupby('Category')['PR Number'].count().rename('Count').reset_index()
@@ -147,10 +150,8 @@ if __name__ == "__main__":
         df_severity_distribution = pd.DataFrame({'Status': ["Reviews analysis data not available"]})
 
     # --- Reviews Summary ---
-    df_total_reviews_per_reviewer = pd.DataFrame()
-    df_reviews_by_pr_and_reviewer = pd.DataFrame()
-
-    if reviews_list_df is not None and not reviews_list_df.empty:
+    # df_total_reviews_per_reviewer and df_reviews_by_pr_and_reviewer initialized earlier
+    if reviews_list_df is not None and not reviews_list_df.empty and reviewer_list_df is not None: # Added reviewer_list_df check
         # Calculate total review comments per reviewer
         # Assuming 'Review Comment' column exists for counting
         if 'Review Comment' in reviews_list_df.columns and 'Reviewer' in reviews_list_df.columns:
@@ -203,9 +204,7 @@ if __name__ == "__main__":
         df_reviews_by_pr_and_reviewer = pd.DataFrame({'Status': ["Reviews list data not available"]})
 
     # --- Code Owner Comments Summary ---
-    df_code_owner_category_summary = pd.DataFrame()
-    df_code_owner_severity_summary = pd.DataFrame()
-
+    # df_code_owner_category_summary and df_code_owner_severity_summary initialized earlier
     if reviewer_list_df is not None and not reviewer_list_df.empty and \
        reviews_list_df is not None and not reviews_list_df.empty and \
        reviews_analysis_df is not None and not reviews_analysis_df.empty:
@@ -285,25 +284,27 @@ if __name__ == "__main__":
     excel_file_path = "pr_analysis_report.xlsx"
     try:
         with pd.ExcelWriter(excel_file_path, engine='openpyxl') as writer:
-            if 'df_author_summary' in locals() and not df_author_summary.empty:
+            # Check if df_author_summary was successfully computed (not None and not empty)
+            if df_author_summary is not None and not df_author_summary.empty:
                 df_author_summary.to_excel(writer, sheet_name='Author Summary', index=True)
 
-            if 'df_category_distribution' in locals() and not df_category_distribution.empty and not ('Status' in df_category_distribution.columns and df_category_distribution.shape[0] ==1) :
+            # For other DFs, check they are not the placeholder 'Status' DFs
+            if not ('Status' in df_category_distribution.columns and df_category_distribution.shape[0] == 1 and "Data not loaded" in df_category_distribution['Status'].iloc[0]):
                 df_category_distribution.to_excel(writer, sheet_name='Comment Category Distribution', index=False)
 
-            if 'df_severity_distribution' in locals() and not df_severity_distribution.empty and not ('Status' in df_severity_distribution.columns and df_severity_distribution.shape[0] ==1) :
+            if not ('Status' in df_severity_distribution.columns and df_severity_distribution.shape[0] == 1 and "Data not loaded" in df_severity_distribution['Status'].iloc[0]):
                 df_severity_distribution.to_excel(writer, sheet_name='Comment Severity Distribution', index=False)
 
-            if 'df_total_reviews_per_reviewer' in locals() and not df_total_reviews_per_reviewer.empty and not ('Status' in df_total_reviews_per_reviewer.columns and df_total_reviews_per_reviewer.shape[0] ==1):
+            if not ('Status' in df_total_reviews_per_reviewer.columns and df_total_reviews_per_reviewer.shape[0] == 1 and "Data not loaded" in df_total_reviews_per_reviewer['Status'].iloc[0]):
                 df_total_reviews_per_reviewer.to_excel(writer, sheet_name='Total Reviews per Reviewer', index=False)
 
-            if 'df_reviews_by_pr_and_reviewer' in locals() and not df_reviews_by_pr_and_reviewer.empty and not ('Status' in df_reviews_by_pr_and_reviewer.columns and df_reviews_by_pr_and_reviewer.shape[0] ==1):
+            if not ('Status' in df_reviews_by_pr_and_reviewer.columns and df_reviews_by_pr_and_reviewer.shape[0] == 1 and "Data not loaded" in df_reviews_by_pr_and_reviewer['Status'].iloc[0]):
                 df_reviews_by_pr_and_reviewer.to_excel(writer, sheet_name='Reviews by PR and Reviewer', index=False)
 
-            if 'df_code_owner_category_summary' in locals() and not df_code_owner_category_summary.empty and not ('Status' in df_code_owner_category_summary.columns and df_code_owner_category_summary.shape[0] ==1):
+            if not ('Status' in df_code_owner_category_summary.columns and df_code_owner_category_summary.shape[0] == 1 and "Data not loaded" in df_code_owner_category_summary['Status'].iloc[0]):
                 df_code_owner_category_summary.to_excel(writer, sheet_name='Code Owner Category Summary', index=False)
 
-            if 'df_code_owner_severity_summary' in locals() and not df_code_owner_severity_summary.empty and not ('Status' in df_code_owner_severity_summary.columns and df_code_owner_severity_summary.shape[0] ==1):
+            if not ('Status' in df_code_owner_severity_summary.columns and df_code_owner_severity_summary.shape[0] == 1 and "Data not loaded" in df_code_owner_severity_summary['Status'].iloc[0]):
                 df_code_owner_severity_summary.to_excel(writer, sheet_name='Code Owner Severity Summary', index=False)
 
         print(f"\nExcel report generated successfully: {excel_file_path}")

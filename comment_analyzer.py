@@ -8,6 +8,7 @@ import os
 import csv
 import time
 import json # For JSON file-based caching
+import pandas as pd # Added for Excel I/O
 
 # Third-party imports
 import requests
@@ -184,46 +185,42 @@ def main():
         print("Please ensure it's set in your .env file or environment.")
         exit(1)
 
-    input_csv_path = "data/sample-reviews-list.csv"
-    output_csv_path = "data/sample-reviews-analysis.csv"
-
-    if not os.path.exists(input_csv_path):
-        print(f"Error: Input CSV file not found at {input_csv_path}")
-        print("Please ensure the sample CSV exists (e.g., created by a previous step or manually).")
-        return
+    input_excel_path = "data/intermediate_data.xlsx" # Changed from CSV to XLSX
+    output_excel_path = "data/intermediate_data.xlsx" # Output to the same Excel file
+    input_sheet_name = "ReviewList"
+    output_sheet_name = "ReviewAnalysis"
 
     # Load Cache
     ai_cache = load_cache(CACHE_FILE)
     print(f"Loaded {len(ai_cache)} items from cache file {CACHE_FILE}")
 
-    print(f"Reading comments from: {input_csv_path}")
+    print(f"Attempting to read comments from sheet '{input_sheet_name}' in: {input_excel_path}")
 
     analyzed_results = []
-    comments_processed_count = 0
+    comments_df = None
 
     try:
-        with open(input_csv_path, 'r', newline='', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            required_columns = ['Review Comment', 'PR Number']
-            if not all(col in reader.fieldnames for col in required_columns):
-                print(f"Error: CSV file {input_csv_path} must contain {required_columns} columns.")
-                # Save cache even if input is bad, in case some items were loaded and it needs cleanup.
-                save_cache(ai_cache, CACHE_FILE)
-                return
+        # Read the specific sheet from the Excel file
+        comments_df = pd.read_excel(input_excel_path, sheet_name=input_sheet_name)
+        required_columns = ['Review Comment', 'PR Number']
+        if not all(col in comments_df.columns for col in required_columns):
+            print(f"Error: Excel sheet '{input_sheet_name}' in {input_excel_path} must contain {required_columns} columns.")
+            save_cache(ai_cache, CACHE_FILE)
+            return
 
-            rows_for_processing = list(reader) # Read all rows to process
-
-        print(f"Found {len(rows_for_processing)} total comments to process.")
+        # Convert DataFrame to list of dictionaries for existing processing logic
+        # Note: It might be more efficient to process directly from DataFrame rows if performance is critical
+        rows_for_processing = comments_df.to_dict('records')
+        print(f"Found {len(rows_for_processing)} total comments to process from '{input_sheet_name}'.")
 
         for i, row in enumerate(rows_for_processing):
-            comment_text = row.get("Review Comment", "").strip()
-            pr_number = row.get("PR Number", "N/A").strip()
+            comment_text = str(row.get("Review Comment", "")).strip() # Ensure string type
+            pr_number = str(row.get("PR Number", "N/A")).strip() # Ensure string type
 
             if not comment_text:
                 print(f"Skipping empty comment in row {i+1} (PR: {pr_number}).")
                 continue
 
-            # print(f"\nProcessing comment for PR #{pr_number} ({i+1}/{len(rows_for_processing)})...") # Verbose
             category, severity, guideline, api_called = analyze_comment(comment_text, HF_TOKEN, ai_cache)
 
             analyzed_results.append({
@@ -233,35 +230,47 @@ def main():
                 'Severity': severity,
                 'Developer Guideline': guideline
             })
-            comments_processed_count += 1
 
-            if api_called: # If it was a cache miss and API was called
-                # print(f"API called for comment {i+1}. Sleeping for 1 second.") # Verbose
+            if api_called:
                 time.sleep(1) # Simple delay per comment analysis if API was hit
 
     except FileNotFoundError:
-        print(f"Error: The file {input_csv_path} was not found.")
-        save_cache(ai_cache, CACHE_FILE) # Attempt to save cache before exiting
+        print(f"Error: The Excel file {input_excel_path} was not found.")
+        save_cache(ai_cache, CACHE_FILE)
         return
-    except Exception as e:
-        print(f"Error reading or processing CSV file {input_csv_path}: {e}")
-        save_cache(ai_cache, CACHE_FILE) # Attempt to save cache before exiting
+    except (KeyError, ValueError) as e: # Catches errors if sheet_name is not found or other pandas read errors
+        print(f"Error reading sheet '{input_sheet_name}' from {input_excel_path}: {e}. Ensure the sheet exists and is correctly named.")
+        save_cache(ai_cache, CACHE_FILE)
+        return
+    except Exception as e: # General exception for other unforeseen errors during read/process
+        print(f"An unexpected error occurred while reading or processing data: {e}")
+        save_cache(ai_cache, CACHE_FILE)
         return
 
-    # Write to CSV
+    # Write to Excel
     if analyzed_results:
-        print(f"\nWriting {len(analyzed_results)} analyzed comments to {output_csv_path}...")
+        print(f"\nWriting {len(analyzed_results)} analyzed comments to sheet '{output_sheet_name}' in {output_excel_path}...")
         try:
-            # Ensure data directory exists for output CSV
-            os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
-            with open(output_csv_path, 'w', newline='', encoding='utf-8') as outfile:
-                fieldnames = ['PR Number', 'Review Comment', 'Category', 'Severity', 'Developer Guideline']
-                writer = csv.DictWriter(outfile, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(analyzed_results)
-            print(f"Analysis complete. Results saved to {output_csv_path}")
-        except IOError as e:
-            print(f"Error: Could not write results to {output_csv_path}: {e}")
+            # Convert results to DataFrame
+            results_df = pd.DataFrame(analyzed_results)
+
+            # Ensure data directory exists
+            os.makedirs(os.path.dirname(output_excel_path), exist_ok=True)
+
+            # Use ExcelWriter to append to the existing file and replace sheet if it exists
+            with pd.ExcelWriter(output_excel_path, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
+                results_df.to_excel(writer, sheet_name=output_sheet_name, index=False)
+
+            print(f"Analysis complete. Results saved to sheet '{output_sheet_name}' in {output_excel_path}")
+        except FileNotFoundError: # ExcelWriter in append mode might expect the file to exist.
+             # Let's try creating it if it doesn't exist, or handle this case more gracefully.
+             # For now, assuming pr_fetcher.py creates it. If not, this would be an issue.
+             # A robust solution might involve checking existence and using mode='w' if not found,
+             # but that would overwrite other sheets if called first.
+             # The task implies pr_fetcher.py already created intermediate_data.xlsx.
+            print(f"Error: The output Excel file {output_excel_path} was not found. Ensure it's created by a prior step.")
+        except Exception as e: # Broader exception for other Excel writing errors
+            print(f"Error: Could not write results to {output_excel_path} (sheet: '{output_sheet_name}'): {e}")
     else:
         print("No comments were analyzed or no results to write.")
 
