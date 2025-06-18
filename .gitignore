@@ -9,5 +9,11 @@ venv/
 *.egg-info/
 dist/
 build/
-data/*.csv
+
+# Ignore actual data output files, but not the sample files
+data/pr-list.csv
+data/author-list.csv
+data/reviewer-list.csv
+data/reviews-list.csv
+data/reviews-analysis.csv
 data/ai_analysis_cache.json
